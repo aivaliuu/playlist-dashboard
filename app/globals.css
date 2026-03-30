@@ -50,3 +50,5 @@ th:first-child, td:first-child { text-align: left; position: sticky; left: 0; ba
 .estimate-total { font-size: clamp(32px, 5vw, 54px); font-weight: 900; margin: 8px 0; }
 .muted { color: var(--muted); }
 .massive { max-height: 70vh; overflow: auto; }
+
+.two-weeks { grid-template-columns: repeat(7, 1fr); }
