@@ -11,18 +11,19 @@ const playlistMeta = {
 
 const formatter = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 const compact = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
 const { dates, knownDaily } = groupLatestOneDayRows(rawPlaylist);
-const latestDates = dates.slice(-14);
 const maxKnownPosition = Math.max(...Object.values(knownDaily).flatMap((obj) => Object.keys(obj).map(Number)));
 const maxPosition = Math.max(40, maxKnownPosition);
-const series = latestDates.map((date) => ({
+const series = dates.map((date) => ({
   date,
   label: formatter.format(new Date(`${date}T12:00:00Z`)),
   shortLabel: compact.format(new Date(`${date}T12:00:00Z`)),
   spots: estimateCurve(knownDaily[date], maxPosition, rawPlaylist.estimation),
   exactCount: Object.keys(knownDaily[date]).length,
 }));
-const weekly = summarizeWeeks(latestDates, series);
+const recentSeries = series.slice(-14);
+const weeklyAverages = summarizeWeeks(dates, series, 10);
 
 function num(n) {
   return new Intl.NumberFormat('en-US').format(Math.round(n));
@@ -32,6 +33,9 @@ export default function Page() {
   const latest = series[series.length - 1];
   const previous = series[series.length - 2] || latest;
   const totalEstimatedStreams = sumValues(latest.spots);
+  const latestWeek = weeklyAverages[weeklyAverages.length - 1];
+  const prevWeek = weeklyAverages[weeklyAverages.length - 2];
+  const avgDelta = latestWeek && prevWeek ? latestWeek.average - prevWeek.average : 0;
 
   return (
     <main className="page">
@@ -45,15 +49,30 @@ export default function Page() {
         <div className="hero-note">
           <div className="estimate-label">Estimated total streams</div>
           <div className="estimate-total">{num(totalEstimatedStreams)}</div>
-          <p>Top spots are now estimated more conservatively using flatter extrapolation and the API’s own estimation bands where available.</p>
+          <p>Top spots are estimated conservatively and weekly rollups now use average daily totals.</p>
         </div>
       </section>
 
       <section className="card section">
-        <h2>Week-to-week daily totals</h2>
-        <p className="muted">Latest 7-day estimated total: <strong>{num(weekly.latestWeekTotal)}</strong> · Previous 7-day estimated total: <strong>{num(weekly.prevWeekTotal)}</strong> · Delta: <strong>{weekly.delta >= 0 ? '+' : ''}{num(weekly.delta)}</strong></p>
+        <h2>Last 10 weeks: average daily total</h2>
+        <p className="muted">Latest week average: <strong>{latestWeek ? num(latestWeek.average) : '—'}</strong> · Previous week average: <strong>{prevWeek ? num(prevWeek.average) : '—'}</strong> · Delta: <strong>{avgDelta >= 0 ? '+' : ''}{num(avgDelta)}</strong></p>
         <div className="mini-grid two-weeks">
-          {series.map(({ date, shortLabel, spots, exactCount }) => (
+          {weeklyAverages.map((week, idx) => (
+            <div key={week.start + week.end} className="mini-card">
+              <div className="mini-date">Week {idx + 1}</div>
+              <div className="mini-stat">{shortDate.format(new Date(`${week.start}T12:00:00Z`))} → {shortDate.format(new Date(`${week.end}T12:00:00Z`))}</div>
+              <div className="mini-stat">Avg daily total: {num(week.average)}</div>
+              <div className="mini-stat">Days in bucket: {week.days}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card section">
+        <h2>Recent daily totals</h2>
+        <p className="muted">Last 14 available days, shown individually.</p>
+        <div className="mini-grid two-weeks">
+          {recentSeries.map(({ date, shortLabel, spots, exactCount }) => (
             <div key={date} className="mini-card">
               <div className="mini-date">{shortLabel}</div>
               <div className="mini-stat">Daily total: {num(sumValues(spots))}</div>
@@ -71,14 +90,14 @@ export default function Page() {
             <thead>
               <tr>
                 <th>Spot</th>
-                {series.map(({ date, label }) => <th key={date}>{label}</th>)}
+                {recentSeries.map(({ date, label }) => <th key={date}>{label}</th>)}
               </tr>
             </thead>
             <tbody>
               {Array.from({ length: maxPosition }, (_, i) => i + 1).map((position) => (
                 <tr key={position}>
                   <td>#{position}</td>
-                  {series.map(({ date, spots }) => {
+                  {recentSeries.map(({ date, spots }) => {
                     const item = spots[position];
                     return (
                       <td key={`${date}-${position}`} className={item.estimated ? 'estimated' : 'exact'}>
